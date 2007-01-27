@@ -1,0 +1,59 @@
+
+      8888888b.     d8888 888                    888 d8b
+      888   Y88b   d88888 888                    888 Y8P
+      888    888  d88P888 888                    888
+      888   d88P d88P 888 888       8888b.   .d88888 888 88888b.
+      8888888P" d88P  888 888          "88b d88" 888 888 888 "88b
+      888      d88P   888 888      .d888888 888  888 888 888  888
+      888     d8888888888 888      888  888 Y88b 888 888 888  888
+      888    d88P     888 88888888 "Y888888  "Y88888 888 888  888
+
+      Enhanced PAL to NTSC Converter for True PSX NTSC Conversion
+
+        Features :..............................................
+         : *) Convert your PAL PSX Games to REAL NTSC (60Hz)   :
+         : *) Make them PSP POPS Compatible                    :
+         : *) Opensource! Improve the Software yourself!       :
+         :.....................................................:
+       
+        Information :...........................................
+         : As PAL Games were troubling me on POPS aswell,      :
+         : I thought it was Time to put an End to it... :D     :
+         : This should center 99% of Games... If they aren't   :
+         : centered 100% after this Patch, use Zapper2000 to   :
+         : do Fine-Adjustments via Y-Pos... :)                 :
+         :.....................................................:
+
+        Credits :...............................................
+         : The Author of Zapper2000                            :
+         :   *) For the Creation of the Y-Pos Struct Patching. :
+         :      Without the Information I gathered there, I    :
+         :      wouldnt have been able to patch VMode.         :
+         :                                                     :
+         : flatwhatson                                         :
+         :   *) For providing me several NTSC Struct-Dumps :D  :
+         :                                                     :
+         : Piccolo                                             :
+         :   *) For pointing out how he fixed LoD.             :
+         :      It dealt me a nice Idea on how to fix Games... :
+         :      And as you can see - the Idea worked...        :
+         :                                                     :
+         : BlackSkull                                          :
+         :                                                     :
+         :   *) For playing around with the Screenmode Values. :
+         :      It helped me figure out what I definently      :
+         :      never wanna do... LOL...                       :
+         :.....................................................:
+
+        Contact :...............................................
+         : If you ever *) Need Help with one of my Codings     :
+         :             *) Simply have a Question to ask        :
+         :             *) Need lil' Coding Help                :
+         :            or got a Suggestion for one of my Tools. :
+         :                                                     :
+         : You can contact me (Coldbird) - using various Ways~ :
+         :                                                     :
+         : Em@il : vanburace@gmail.com                         :
+         : MSN   : coldbird123@hotmail.com                     :
+         : IRC   : irc.lan.st #psp                             :
+         :.....................................................:
