@@ -1,18 +1,22 @@
 
-      8888888b.     d8888 888                    888 d8b
-      888   Y88b   d88888 888                    888 Y8P
-      888    888  d88P888 888                    888
-      888   d88P d88P 888 888       8888b.   .d88888 888 88888b.
-      8888888P" d88P  888 888          "88b d88" 888 888 888 "88b
-      888      d88P   888 888      .d888888 888  888 888 888  888
-      888     d8888888888 888      888  888 Y88b 888 888 888  888
-      888    d88P     888 88888888 "Y888888  "Y88888 888 888  888
+      8888888b.     d8888 888                    888 d8b          R
+      888   Y88b   d88888 888                    888 Y8P          .E
+      888    888  d88P888 888                    888               .V
+      888   d88P d88P 888 888       8888b.   .d88888 888 88888b.    .I      [1.1]
+      8888888P" d88P  888 888          "88b d88" 888 888 888 "88b    .S
+      888      d88P   888 888      .d888888 888  888 888 888  888     .I
+      888     d8888888888 888      888  888 Y88b 888 888 888  888      .O
+      888    d88P     888 88888888 "Y888888  "Y88888 888 888  888       .N
 
       Enhanced PAL to NTSC Converter for True PSX NTSC Conversion
 
         Features :..............................................
          : *) Convert your PAL PSX Games to REAL NTSC (60Hz)   :
-         : *) Make them PSP POPS Compatible                    :
+         :    This means... Even the Games that won't boot...  :
+         :    Could just be fixed by Paladin ;-)               :
+         :                                                     :
+         : *) Fix Screen Position using several Fixing-Methods :
+         :                                                     :
          : *) Opensource! Improve the Software yourself!       :
          :.....................................................:
        
@@ -20,8 +24,9 @@
          : As PAL Games were troubling me on POPS aswell,      :
          : I thought it was Time to put an End to it... :D     :
          : This should center 99% of Games... If they aren't   :
-         : centered 100% after this Patch, use Zapper2000 to   :
-         : do Fine-Adjustments via Y-Pos... :)                 :
+         : centered 100% after a normal Patch...               :
+         : You should try the two new Parameter!               :
+         : YFix and ScreenFix :D                               :
          :.....................................................:
 
         Credits :...............................................
@@ -43,6 +48,11 @@
          :   *) For playing around with the Screenmode Values. :
          :      It helped me figure out what I definently      :
          :      never wanna do... LOL...                       :
+         :                                                     :
+         : Coldbird (Damian) - Yeah - Thats me!                :
+         :                                                     :
+         :   *) Hm.. maybe for... Paladin itself?...           :
+         :      HELL NO - THIS HASN'T BEEN DONE IN A GUI YET!  :
          :.....................................................:
 
         Contact :...............................................
