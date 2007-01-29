@@ -2,7 +2,7 @@
  *    8888888b.     d8888 888                    888 d8b          R
  *    888   Y88b   d88888 888                    888 Y8P          .E
  *    888    888  d88P888 888                    888               .V
- *    888   d88P d88P 888 888       8888b.   .d88888 888 88888b.    .I      [1.1]
+ *    888   d88P d88P 888 888       8888b.   .d88888 888 88888b.    .I      [1.11]
  *    8888888P" d88P  888 888          "88b d88" 888 888 888 "88b    .S
  *    888      d88P   888 888      .d888888 888  888 888 888  888     .I
  *    888     d8888888888 888      888  888 Y88b 888 888 888  888      .O
@@ -21,6 +21,9 @@
  *     :     > Y-Pos Type-C Patching Support added            by <Damian Coldbird> :
  *     :     > Screenmode Type-A Patching Support added       by <Damian Coldbird> :
  *     :     > Screenmode Type-C PAtching Support added       by <Damian Coldbird> :
+ *     :.::..::..::..::..::..::..::..::..::..::..::..::..::..::.::..::..::..::..::.:
+ *     : REVISION 1.11                                                             :
+ *     :     > Y-Pos Values are now variable...               by <Damian Coldbird> :
  *     :.::..::..::..::..::..::..::..::..::..::..::..::..::..::.::..::..::..::..::.:
  */
 
@@ -43,6 +46,7 @@ char *gamecodes[N_GAME_CODES] =
 //Modes
 int yfix=0;
 int sfix=0;
+unsigned short yval[2]={0x03,0x00};
 
 /* FixVMode Void      #####################################
  * ----------------   | Return Values                     |
@@ -52,7 +56,7 @@ int sfix=0;
 void FixVMode(char * infile, char * outfile)
 {
    //Try to open Inputfile
-   FILE * f1 = fopen(infile,"r");
+   FILE * f1 = fopen(infile,"rb");
 
    //Close Tool if File can't be opened!
    if(!f1)
@@ -62,7 +66,7 @@ void FixVMode(char * infile, char * outfile)
    }
 
    //Try to open Outputfile
-   FILE * f2 = fopen(outfile,"w");
+   FILE * f2 = fopen(outfile,"wb");
 
    //Close Tool if File can't be opened!
    if(!f2)
@@ -129,11 +133,16 @@ void FixVMode(char * infile, char * outfile)
       {
          if(yfix)
          {
-            if((*(short*)(&buffer))>=0x10)
-            {
-               (*(short*)(&buffer))-=0x10;
-               fprintf(stdout,"<%s> -> Applied Y-Fix !\n",infile);
-            }
+               if(countdown==5)
+               {
+                  (*(short*)(&buffer))=yval[0];
+                  fprintf(stdout,"<%s> -> Applied Y-Fix 1 !\n",infile);
+               }
+               if(countdown==4)
+               {
+                  (*(short*)(&buffer))=yval[1];
+                  fprintf(stdout,"<%s> -> Applied Y-Fix 2 !\n",infile);
+               }
          }
          if(sfix)
          {
@@ -195,7 +204,7 @@ void FixVMode(char * infile, char * outfile)
  */
 char * GetGID(char * filename, char * output)
 {
-   FILE * file = fopen(filename, "r");
+   FILE * file = fopen(filename, "rb");
    if(!file)
    {
       fprintf(stderr,"Couldn't Open PSX Game [%s] for GameID Scan!\n",filename);
@@ -249,7 +258,7 @@ int Roland(char * filename, char * mode)
    FILE * fp;
 
    //Check Read-Access
-   if(!strcmp(mode,"r"))
+   if(!strcmp(mode,"rb"))
    {
       fp = fopen(filename,mode);
       if(fp)
@@ -260,7 +269,7 @@ int Roland(char * filename, char * mode)
    }
 
    //Check Write Access
-   else if(!strcmp(mode,"w"))
+   else if(!strcmp(mode,"wb"))
    {
       fp = fopen(filename,mode);
       if(fp)
@@ -283,7 +292,7 @@ int Roland(char * filename, char * mode)
 int GetFS(char * filename)
 {
    //File Pointer + Open File
-   FILE * fp = fopen(filename,"r");
+   FILE * fp = fopen(filename,"rb");
 
    //If it can't be opened - Return EOF
    if(!fp) return 0;
@@ -298,6 +307,87 @@ int GetFS(char * filename)
 
    //Return Filesize
    return size;
+}
+
+/* LetterVal          #####################################
+ * ----------------   | Return Values                     |
+ * Used to convert    |    0-15    (-1 on Failure)        |
+ * char to hex.       #####################################
+ */
+int LetterVal(char c)
+{
+   switch(c)
+   {
+      case '0':
+         return 0;
+      case '1':
+         return 1;
+      case '2':
+         return 2;
+      case '3':
+         return 3;
+      case '4':
+         return 4;
+      case '5':
+         return 5;
+      case '6':
+         return 6;
+      case '7':
+         return 7;
+      case '8':
+         return 8;
+      case '9':
+         return 9;
+      case 'A':
+      case 'a':
+         return 10;
+      case 'B':
+      case 'b':
+         return 11;
+      case 'C':
+      case 'c':
+         return 12;
+      case 'D':
+      case 'd':
+         return 13;
+      case 'E':
+      case 'e':
+         return 14;
+      case 'F':
+      case 'f':
+         return 15;
+   }
+   return -1;
+}
+
+/* GetYVal Function   #####################################
+ * ----------------   | Return Values                     |
+ * Used to get        |    0 = Failure  /  1 = Success    |
+ * Y-Values.          #####################################
+ */
+int GetYVal(char * str, int offset)
+{
+   unsigned short result=0;
+
+   if((strlen(str))!=4)
+      return 0;
+
+   if((str[0]!='0')||(str[1]!='x'))
+      return 0;
+
+   if(((str[2]>='0')&&(str[2]<='9'))||((str[2]>='A')&&(str[2]<='F'))||((str[2]>='a')&&(str[2]<='z')))
+      result+=(0x10*(LetterVal(str[2])));
+   else
+      return 0;
+
+   if(((str[3]>='0')&&(str[3]<='9'))||((str[3]>='A')&&(str[3]<='F'))||((str[3]>='a')&&(str[3]<='z')))
+      result+=LetterVal(str[3]);
+   else
+      return 0;
+
+   yval[offset]=result;
+
+   return 1;
 }
 
 /* main Function      #####################################
@@ -320,21 +410,23 @@ int main(int argc, char* argv[])
    fprintf(stdout,"\n");
 
    //Check Argument Count
-   if((argc<3)||(argc>5))
+   if((argc<3)||(argc>7))
    {
-      fprintf(stdout,"%s <PAL> <NTSC> [Y-Fix] [Screen-Fix]\n",argv[0]);
-      fprintf(stdout,"  ex. %s MyPAL.iso OutputNTSC.iso Yes Yes\n",argv[0]);
+      fprintf(stdout,"%s <PAL> <NTSC> [Y-Fix] [Screen-Fix] [Y-Value 1] [Y-Value 2]\n",argv[0]);
+      fprintf(stdout,"  ex. %s MyPAL.iso OutputNTSC.iso Yes Yes 0x03 0x00\n",argv[0]);
       fprintf(stdout,"\n");
       fprintf(stdout,"  <PAL>        : Input PAL ISO File\n");
       fprintf(stdout,"  <NTSC>       : Output NTSC ISO File\n");
       fprintf(stdout,"  [Y-Fix]      : Yes / No -> Automatically Resets Pos to 3/0\n");
       fprintf(stdout,"  [Screen-Fix] : Yes / No -> Decreases Screen Value by 1\n");
+      fprintf(stdout,"  [Y-Value 1]  : Its the YFix 1 Value - If uninitialized Paladin will use 0x03\n");
+      fprintf(stdout,"  [Y-Value 2]  : Its the YFix 2 Value - If unitinialized Paladin will use 0x00\n");
       fprintf(stdout,"\n");
       return 0;
    }
 
    //Check for File-Access Rights [Roland was one of the most famous Paladins in the Middle Age]
-   if(!(Roland(argv[1],"r")))
+   if(!(Roland(argv[1],"rb")))
    {
       fprintf(stderr,"<%s> -> File couldn't be opened.\n",argv[1]);
       return -1;
@@ -360,6 +452,22 @@ int main(int argc, char* argv[])
    //Set Modes
    if(!(strcmp(argv[3],"Yes"))) yfix=1;
    if(!(strcmp(argv[4],"Yes"))) sfix=1;
+
+   //Set YVals
+   if(argc>=6)
+   {
+      if((GetYVal(argv[5],0))==-1)
+      {
+         fprintf(stdout,"<%s> -> Hex Value given for Y-Value 1 is invalid! Standard Value will be used!\n",argv[1]);
+      }
+   }
+   if(argc==7)
+   {
+      if((GetYVal(argv[6],1))==-1)
+      {
+         fprintf(stdout,"<%s> -> Hex Value given for Y-Value 2 is invalid! Standard Value will be used!\n",argv[1]);
+      }
+   }
 
    //Fix the Game
    FixVMode(argv[1],argv[2]);

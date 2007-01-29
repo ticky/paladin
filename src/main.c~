@@ -1,10 +1,39 @@
+/*
+ *    8888888b.     d8888 888                    888 d8b          R
+ *    888   Y88b   d88888 888                    888 Y8P          .E
+ *    888    888  d88P888 888                    888               .V
+ *    888   d88P d88P 888 888       8888b.   .d88888 888 88888b.    .I      [1.11]
+ *    8888888P" d88P  888 888          "88b d88" 888 888 888 "88b    .S
+ *    888      d88P   888 888      .d888888 888  888 888 888  888     .I
+ *    888     d8888888888 888      888  888 Y88b 888 888 888  888      .O
+ *    888    d88P     888 88888888 "Y888888  "Y88888 888 888  888       .N
+ *
+ *    Enhanced PAL to NTSC Converter for True PSX NTSC Conversion
+ *
+ *    Changelog :...................................................................
+ *     : REVISION 1.0                                         by <Damian Coldbird> :
+ *     :     > Initial Release of PALadin - Welcome on Earth! by <Damian Coldbird> :
+ *     :     > VMode Type-A Patching Support added            by <Damian Coldbird> :
+ *     :.::..::..::..::..::..::..::..::..::..::..::..::..::..::.::..::..::..::..::.:
+ *     : REVISION 1.1                                         by <Damian Coldbird> :
+ *     :     > VMode Type-C Patching Support added            by <Damian Coldbird> :
+ *     :     > Y-Pos Type-A Patching Support added            by <Damian Coldbird> :
+ *     :     > Y-Pos Type-C Patching Support added            by <Damian Coldbird> :
+ *     :     > Screenmode Type-A Patching Support added       by <Damian Coldbird> :
+ *     :     > Screenmode Type-C PAtching Support added       by <Damian Coldbird> :
+ *     :.::..::..::..::..::..::..::..::..::..::..::..::..::..::.::..::..::..::..::.:
+ *     :     > Y-Pos Values are now variable...               by <Damian Coldbird> :
+ *     :.::..::..::..::..::..::..::..::..::..::..::..::..::..::.::..::..::..::..::.:
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define UNK 0xFF
+//Static Gamecode Ammount -> Used for PAL Region Verification
 #define N_GAME_CODES	4
 
+//Region-Codes -> Used for PAL Region Verification
 char *gamecodes[N_GAME_CODES] =
 {
 	"SLES",
@@ -13,89 +42,168 @@ char *gamecodes[N_GAME_CODES] =
 	"SLED",
 };
 
-unsigned char vmodemask[4] = {UNK,UNK,0x24,0x86};
-unsigned char yposmask[16] = {UNK,UNK,0x24,0x86,
-                              UNK,UNK,UNK,UNK,UNK,UNK,0x90,0x24,UNK,UNK,0x90,0x24};
+//Modes
+int yfix=0;
+int sfix=0;
+unsigned short yval[2]={0x03,0x00};
 
-int GetMask(char * filename)
+/* FixVMode Void      #####################################
+ * ----------------   | Return Values                     |
+ * Fixes VMode and    |    None                           |
+ * YFix / Screenfix.  #####################################
+ */
+void FixVMode(char * infile, char * outfile)
 {
-   FILE * f1 = fopen(filename,"r");
+   //Try to open Inputfile
+   FILE * f1 = fopen(infile,"rb");
 
+   //Close Tool if File can't be opened!
    if(!f1)
    {
-      fprintf(stderr,"Failed to open [%s] for Mask-Scan!\n",filename);
+      fprintf(stderr,"<%s> -> Failed to Open Input PSX Game ISO!\n",infile);
       exit(-1);
    }
 
-   int okay=0;
-   int readbyte=0;
-   int i=0;
-   unsigned char buffer[16];
+   //Try to open Outputfile
+   FILE * f2 = fopen(outfile,"wb");
 
-   while((readbyte=fread(buffer,1,16,f1))==sizeof(buffer))
+   //Close Tool if File can't be opened!
+   if(!f2)
    {
-      //Comparison Switch
-      okay=1;
+      fprintf(stderr,"<%s> -> Failed to Open Output PSX Game ISO!\n",outfile);
+      exit(-1);
+   }
+
+   //typo
+   int typo=0;
+
+   //fixes
+   int countdown=0;
+
+   //Contains the Ammount of Successfully Read Bytes via fread!
+   int readbyte=0;
+
+   //Buffer for Struct
+   unsigned char buffer[4];
+
+   while((readbyte=fread(buffer,1,sizeof(buffer),f1))==sizeof(buffer))
+   {
+      //Type
+      typo=0;
+
+      //If Countdown is set
+      if(countdown)
+      {
+         countdown--;
+      }
 
       //Do a Pre-Check on the Buffer
       if((buffer[1]<<8)+buffer[0]>1)
       {
-         //Compare Buffer with VMode Searchmask
-         for(i=0;i<sizeof(yposmask);i++)
+         //Type A-Mask
+         if(buffer[0]==0x0A &&
+            buffer[1]==0x00 &&
+            buffer[2]==0x24 &&
+            buffer[3]==0x86)
          {
-            //If VMode Searchmask doesn't allow Wildcard then...
-            if(yposmask[i]!=UNK)
-            {
-               //If Buffer-Content != VMode Searchmask -> Comparison Unsuccessful!
-               if(yposmask[i]==0x90)
-               {
-                  if(!((buffer[i]==yposmask[i])||(buffer[i]==yposmask[i]+1)||(buffer[i]==yposmask[i]+2)))
-                  {
-                     okay=0;
-                     break;
-                  }
-               }
-               else
-               {
-                  if(buffer[i]!=yposmask[i])
-                  {
-                     okay=0;
-                     break;
-                  }
-               }
-            }
+            typo=1;
+            if(yfix||sfix) countdown=10;
+            fprintf(stdout,"<%s> -> Patched Type-A VMode !\n",infile);
          }
-      }
-      //Pre-Check Failed! 0x0000 or 0x0001 Detected - This Value CAN NEVER be the VMode in a PAL Game!
-      else
-      {
-         okay=0;
+
+         //Type B-Mask (Missing)
+
+         //Type C-Mask
+         if(buffer[0]==0x0A &&
+            buffer[1]==0x00 &&
+            buffer[2]==0x04 &&
+            buffer[3]==0x86)
+         {
+            typo=3;
+            if(yfix||sfix) countdown=10;
+            fprintf(stdout,"<%s> -> Patched Type-C VMode !\n",infile);
+         }
+   
+         //Type D-Mask (Missing)
       }
 
-      //If the Searchmask was a Success - Write Fixed Value!
-      if(okay)
+      //Apply Additional Fixes
+      if(((countdown==5)||(countdown==4))&&(buffer[2]>=0x90)&&(buffer[2]<=0x93)&&(buffer[3]==0x24))
       {
-         vmodemask[0]=buffer[0];
-         vmodemask[1]=buffer[1];
-         vmodemask[2]=buffer[2];
-         vmodemask[3]=buffer[3];
-         fprintf(stdout,"[%x] - VMode Struct Found!\n",*(unsigned int*)(&vmodemask));
-         return 1;
+         if(yfix)
+         {
+               if(countdown==5)
+               {
+                  (*(short*)(&buffer))=yval[0];
+                  fprintf(stdout,"<%s> -> Applied Y-Fix 1 !\n",infile);
+               }
+               if(countdown==4)
+               {
+                  (*(short*)(&buffer))=yval[1];
+                  fprintf(stdout,"<%s> -> Applied Y-Fix 2 !\n",infile);
+               }
+         }
+         if(sfix)
+         {
+            if(buffer[2]>0x90)
+            {
+               buffer[2]--;
+               fprintf(stdout,"<%s> -> Applied Screen-Fix !\n",infile);
+            }
+         }
+         fwrite(buffer,1,4,f2);
       }
+      //Apply Normal Fixes
       else
       {
-         fseek(f1,-15L,SEEK_CUR);
+         //Normal Copy... :)
+         if(!typo)
+         {
+            fwrite(buffer,1,1,f2);
+            fseek(f1,(1-sizeof(buffer)),SEEK_CUR);
+         }
+
+         //Exchange for Type-A / Type-C Fix
+         if((typo==1)||(typo==3))
+         {
+            buffer[0]-=2;
+            buffer[3]-=2;
+            fwrite(buffer,1,4,f2);
+         }
+
+         //Exchange for Type-B Fix (Missing)
+         if(typo==2)
+         {
+
+         }
+
+         //Exchange for Type-D Fix (Missing)
+         if(typo==4)
+         {
+
+         }
       }
    }
 
-   fclose(f1);
+   //This Shouldnt happen... but better safe than sorry...
+   if(readbyte)
+   {
+      fwrite(buffer,1,readbyte,f2);
+   }
 
-   return 0;
+   //Close the Files... Work is over...
+   fclose(f1);
+   fclose(f2);
 }
 
+/* GetGID Function    #####################################
+ * ----------------   | Return Values                     |
+ * Filters out GID    |    0 = Failure  / char* = Success |
+ * of the ISO.        #####################################
+ */
 char * GetGID(char * filename, char * output)
 {
-   FILE * file = fopen(filename, "r");
+   FILE * file = fopen(filename, "rb");
    if(!file)
    {
       fprintf(stderr,"Couldn't Open PSX Game [%s] for GameID Scan!\n",filename);
@@ -138,153 +246,231 @@ char * GetGID(char * filename, char * output)
    else return output;
 }
 
-int main(int argc, char * argv[])
+/* Roland Function      #####################################
+ * -------------------  | Return Values                     |
+ * Function used to     |    0 = Failure  /  1 = Success    |
+ * check for IO Rights  #####################################
+ */
+int Roland(char * filename, char * mode)
 {
-   //Check Argument Count
-   if(argc!=3)
+   //File Pointer
+   FILE * fp;
+
+   //Check Read-Access
+   if(!strcmp(mode,"rb"))
    {
+      fp = fopen(filename,mode);
+      if(fp)
+      {
+         fclose(fp);
+         return 1;
+      }
+   }
+
+   //Check Write Access
+   else if(!strcmp(mode,"wb"))
+   {
+      fp = fopen(filename,mode);
+      if(fp)
+      {
+         fclose(fp);
+         remove(filename);
+         return 1;
+      }
+   }
+
+   //No Access Rights available!
+   return 0;
+}
+
+/* GetFS Function     #####################################
+ * ----------------   | Return Values                     |
+ * Used to get        |    -1 = Failure  /  Success >= 0  |
+ * Filesize.          #####################################
+ */
+int GetFS(char * filename)
+{
+   //File Pointer + Open File
+   FILE * fp = fopen(filename,"rb");
+
+   //If it can't be opened - Return EOF
+   if(!fp) return 0;
+
+   //Get Filesize
+   int size;
+   fseek(fp,0L,SEEK_END);
+   size = ftell(fp);
+
+   //Close File
+   fclose(fp);
+
+   //Return Filesize
+   return size;
+}
+
+/* LetterVal          #####################################
+ * ----------------   | Return Values                     |
+ * Used to convert    |    0-15    (-1 on Failure)        |
+ * char to hex.       #####################################
+ */
+int LetterVal(char c)
+{
+   switch(c)
+   {
+      case '0':
+         return 0;
+      case '1':
+         return 1;
+      case '2':
+         return 2;
+      case '3':
+         return 3;
+      case '4':
+         return 4;
+      case '5':
+         return 5;
+      case '6':
+         return 6;
+      case '7':
+         return 7;
+      case '8':
+         return 8;
+      case '9':
+         return 9;
+      case 'A':
+      case 'a':
+         return 10;
+      case 'B':
+      case 'b':
+         return 11;
+      case 'C':
+      case 'c':
+         return 12;
+      case 'D':
+      case 'd':
+         return 13;
+      case 'E':
+      case 'e':
+         return 14;
+      case 'F':
+      case 'f':
+         return 15;
+   }
+   return -1;
+}
+
+/* GetYVal Function   #####################################
+ * ----------------   | Return Values                     |
+ * Used to get        |    0 = Failure  /  1 = Success    |
+ * Y-Values.          #####################################
+ */
+int GetYVal(char * str, int offset)
+{
+   unsigned short result=0;
+
+   if((strlen(str))!=4)
+      return 0;
+
+   if((str[0]!='0')||(str[1]!='x'))
+      return 0;
+
+   if(((str[2]>='0')&&(str[2]<='9'))||((str[2]>='A')&&(str[2]<='F'))||((str[2]>='a')&&(str[2]<='z')))
+      result+=(0x10*(LetterVal(str[2])));
+   else
+      return 0;
+
+   if(((str[3]>='0')&&(str[3]<='9'))||((str[3]>='A')&&(str[3]<='F'))||((str[3]>='a')&&(str[3]<='z')))
+      result+=LetterVal(str[3]);
+   else
+      return 0;
+
+   yval[offset]=result;
+
+   return 1;
+}
+
+/* main Function      #####################################
+ * ----------------   | Return Values                     |
+ * Main Procedure     |    !=0 = Failure  /  0 = Success  |
+ * of Paladin.        #####################################
+ */
+int main(int argc, char* argv[])
+{
+   //Print ASCII Graphixxx
+   fprintf(stdout,"\n");
+   fprintf(stdout," 8888888b.     d8888 888                    888 d8b\n");
+   fprintf(stdout," 888   Y88b   d88888 888                    888 Y8P\n");
+   fprintf(stdout," 888    888  d88P888 888                    888\n");
+   fprintf(stdout," 888   d88P d88P 888 888       8888b.   .d88888 888 88888b.\n");
+   fprintf(stdout," 8888888P\" d88P  888 888          \"88b d88\" 888 888 888 \"88b\n");
+   fprintf(stdout," 888      d88P   888 888      .d888888 888  888 888 888  888\n");
+   fprintf(stdout," 888     d8888888888 888      888  888 Y88b 888 888 888  888\n");
+   fprintf(stdout," 888    d88P     888 88888888 \"Y888888  \"Y88888 888 888  888\n");
+   fprintf(stdout,"\n");
+
+   //Check Argument Count
+   if((argc<3)||(argc>7))
+   {
+      fprintf(stdout,"%s <PAL> <NTSC> [Y-Fix] [Screen-Fix] [Y-Value 1] [Y-Value 2]\n",argv[0]);
+      fprintf(stdout,"  ex. %s MyPAL.iso OutputNTSC.iso Yes Yes 0x03 0x00\n",argv[0]);
       fprintf(stdout,"\n");
-      fprintf(stdout," 8888888b.     d8888 888                    888 d8b\n");
-      fprintf(stdout," 888   Y88b   d88888 888                    888 Y8P\n");
-      fprintf(stdout," 888    888  d88P888 888                    888\n");
-      fprintf(stdout," 888   d88P d88P 888 888       8888b.   .d88888 888 88888b.\n");
-      fprintf(stdout," 8888888P\" d88P  888 888          \"88b d88\" 888 888 888 \"88b\n");
-      fprintf(stdout," 888      d88P   888 888      .d888888 888  888 888 888  888\n");
-      fprintf(stdout," 888     d8888888888 888      888  888 Y88b 888 888 888  888\n");
-      fprintf(stdout," 888    d88P     888 88888888 \"Y888888  \"Y88888 888 888  888\n");
-      fprintf(stdout,"\n");
-      fprintf(stdout,"%s <PAL> <NTSC> [Y]\n",argv[0]);
-      fprintf(stdout,"  ex. %s MyPAL.iso OutputNTSC.iso\n",argv[0]);
-      fprintf(stdout,"\n");
-      fprintf(stdout,"  <PAL>     : Input PAL ISO File\n");
-      fprintf(stdout,"  <NTSC>    : Output NTSC ISO File\n");
+      fprintf(stdout,"  <PAL>        : Input PAL ISO File\n");
+      fprintf(stdout,"  <NTSC>       : Output NTSC ISO File\n");
+      fprintf(stdout,"  [Y-Fix]      : Yes / No -> Automatically Resets Pos to 3/0\n");
+      fprintf(stdout,"  [Screen-Fix] : Yes / No -> Decreases Screen Value by 1\n");
+      fprintf(stdout,"  [Y-Value 1]  : Its the YFix 1 Value - If uninitialized Paladin will use 0x03\n");
+      fprintf(stdout,"  [Y-Value 2]  : Its the YFix 2 Value - If unitinialized Paladin will use 0x00\n");
       fprintf(stdout,"\n");
       return 0;
    }
 
-   //Open Inputfile
-   FILE * f1 = fopen(argv[1],"r");
-   if(!f1)
+   //Check for File-Access Rights [Roland was one of the most famous Paladins in the Middle Age]
+   if(!(Roland(argv[1],"rb")))
    {
-      fprintf(stderr,"%s couldn't be opened.",argv[1]);
+      fprintf(stderr,"<%s> -> File couldn't be opened.\n",argv[1]);
       return -1;
    }
 
-   //Get Filesize
-   int s1;
-   fseek(f1,0L,SEEK_END);
-   s1 = ftell(f1);
-
-   if(s1==0)
+   //Check Filesize
+   if((GetFS(argv[1]))==0)
    {
-      fprintf(stderr,"%s is 0-Byte long... Terminating...",argv[1]);
+      fprintf(stderr,"<%s> -> 0-Byte-Error / Access Violation.\n",argv[1]);
       return -2;
    }
 
-   fclose(f1);
-
    //Check if Game is European
-   char gameid[9];
+   char gameid[10];
    if(!(GetGID(argv[1],gameid)))
    {
-      fprintf(stderr,"[%s] ain't a European PSX-Game!\n",argv[1]);
+      fprintf(stderr,"<%s> -> File ain't a European PSX-Game!\n",argv[1]);
       return -3;
    }
 
-   //Check for Y-Pos Structure
-   if(argc==3)
+   fprintf(stdout,"<%s> -> GameID [%s] verified as PAL ID!\n",argv[1],gameid);
+
+   //Set Modes
+   if(!(strcmp(argv[3],"Yes"))) yfix=1;
+   if(!(strcmp(argv[4],"Yes"))) sfix=1;
+
+   //Set YVals
+   if(argc>=6)
    {
-      if(!(GetMask(argv[1])))
+      if((GetYVal(argv[5],0))==-1)
       {
-         fprintf(stdout,"[%s] doesn't contain a Y-Pos Structure!\n",argv[1]);
-         fprintf(stdout,"Do you intend to Patch using the Standard VMode Mask?\n");
-         fprintf(stdout,"Keep in Mind that Patching using the Standard Mask can corrupt your Game...\n");
-         fprintf(stdout,"[Space Key -> YES]  [Any Other Printable Key -> NO]\n");
-         if((fgetc(stdin))==' ')
-         {
-            fprintf(stdout," Scanning with Standard Mask - Prepare for Broken Games... :P\n");
-         }
-         else
-         {
-            fprintf(stdout," Stopped Process - No Y-Pos Structure containing VMode Mask found!\n");
-            return 0;
-         }
+         fprintf(stdout,"<%s> -> Hex Value given for Y-Value 1 is invalid! Standard Value will be used!\n",argv[1]);
+      }
+   }
+   if(argc==7)
+   {
+      if((GetYVal(argv[6],1))==-1)
+      {
+         fprintf(stdout,"<%s> -> Hex Value given for Y-Value 2 is invalid! Standard Value will be used!\n",argv[1]);
       }
    }
 
-   //Reopen Inputfile
-   f1 = fopen(argv[1],"r");
+   //Fix the Game
+   FixVMode(argv[1],argv[2]);
 
-   //Open Outputfile
-   FILE * f2 = fopen(argv[2],"w");
-   if(!f2)
-   {
-      fprintf(stderr,"%s couldn't be opened.",argv[2]);
-      return -1;
-   }
-
-   //Fix the Shiz...
-   int readbyte=0;
-   int okay=0;
-   int i=0;
-   unsigned char buffer[4];
-   unsigned char fix[4];
-
-   while((readbyte=fread(buffer,1,4,f1))==sizeof(buffer))
-   {
-      //Comparison Switch
-      okay=1;
-
-      //Do a Pre-Check on the Buffer
-      if((buffer[1]<<8)+buffer[0]>1)
-      {
-         //Compare Buffer with VMode Searchmask
-         for(i=0;i<sizeof(vmodemask);i++)
-         {
-            //If VMode Searchmask doesn't allow Wildcard then...
-            if(vmodemask[i]!=UNK)
-            {
-               //If Buffer-Content != VMode Searchmask -> Comparison Unsuccessful!
-               if(buffer[i]!=vmodemask[i])
-               {
-                  okay=0;
-                  break;
-               }
-            }
-         }
-      }
-      //Pre-Check Failed! 0x0000 or 0x0001 Detected - This Value CAN NEVER be the VMode in a PAL Game!
-      else
-      {
-         okay=0;
-      }
-
-      //If the Searchmask was a Success - Write Fixed Value!
-      if(okay)
-      {
-         (*(unsigned short*)(&fix))=((*(unsigned short*)(&buffer))-2);
-         /*fix[0]=buffer[0]-2;
-         fix[1]=buffer[1];*/
-         fix[2]=buffer[2];
-         fix[3]=buffer[3]-2;
-         fwrite(fix,1,4,f2);
-         fprintf(stdout,"  -> VMode Struct Replaced!\n");
-      }
-      else
-      {
-         fwrite(buffer,1,1,f2);
-         fseek(f1,-3L,SEEK_CUR);
-      }
-   }
-   if(readbyte)
-   {
-      fwrite(buffer,1,readbyte,f2);
-   }
-
-   //Close Files
-   fclose(f1);
-   fclose(f2);
-
-   //ByeBye
+   //ByeBye!
    return 0;
 }
