@@ -1,8 +1,25 @@
 /*
+ * Paladin - Enhanced PAL to NTSC Converter for True PSX NTSC Conversion
+ * Copyright (C) 2007  Damian Coldbird <vanburace@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *
  *    8888888b.     d8888 888                    888 d8b          R
  *    888   Y88b   d88888 888                    888 Y8P          .E
  *    888    888  d88P888 888                    888               .V
- *    888   d88P d88P 888 888       8888b.   .d88888 888 88888b.    .I      [1.11]
+ *    888   d88P d88P 888 888       8888b.   .d88888 888 88888b.    .I      [1.2]
  *    8888888P" d88P  888 888          "88b d88" 888 888 888 "88b    .S
  *    888      d88P   888 888      .d888888 888  888 888 888  888     .I
  *    888     d8888888888 888      888  888 Y88b 888 888 888  888      .O
@@ -25,11 +42,18 @@
  *     : REVISION 1.11                                                             :
  *     :     > Y-Pos Values are now variable...               by <Damian Coldbird> :
  *     :.::..::..::..::..::..::..::..::..::..::..::..::..::..::.::..::..::..::..::.:
+ *     : REVISION 1.2                                                              :
+ *     :     > Now Released under the GNU-GPL                 by <Damian Coldbird> :
+ *     :     > Now using Rolling Buffer for Speed Increase    by <flatwhatson>     :
+ *     :     > Improved Handling of Arguments                 by <Damian Coldbird> :
+ *     :     > VMode outsourced to optional Argument          by <Damian Coldbird> :
+ *     :.::..::..::..::..::..::..::..::..::..::..::..::..::..::.::..::..::..::..::.:
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 //Static Gamecode Ammount -> Used for PAL Region Verification
 #define N_GAME_CODES	4
@@ -44,9 +68,56 @@ char *gamecodes[N_GAME_CODES] =
 };
 
 //Modes
+int vfix=1;
 int yfix=0;
 int sfix=0;
+unsigned char sbase=0x90;
 unsigned short yval[2]={0x03,0x00};
+
+//Rolling Buffer Stuff <flatwhatsons' area...>
+#define BUFFSIZE 1024000
+unsigned char * read_buffer;
+int read_end = 0;
+int read_offset = 0;
+int read_init = 0;
+
+/* buffread Function  #####################################
+ * -----------------  | Return Values                     |
+ * Reads into the     |    Ammount of Read Bytes          |
+ * Rolling Buffer.    #####################################
+ */
+int buffread(unsigned char * buffer, int size, FILE * fp)
+{
+	int i;
+    if(!read_init)
+    {
+    	read_buffer=malloc(BUFFSIZE);
+        read_end=fread(read_buffer,1,sizeof(read_buffer),fp);
+        read_offset=0;
+        read_init=1;
+    }
+    if(read_offset+size>=sizeof(read_buffer))
+    {
+        memcpy(read_buffer,read_buffer+read_offset,sizeof(read_buffer)-read_offset);
+        read_end=fread(read_buffer+sizeof(read_buffer)-read_offset,1,read_offset,fp)+sizeof(read_buffer)-read_offset;
+        read_offset=0;
+    }
+    for(i=0;i<size;i++)
+    {
+    	buffer[i]=read_buffer[read_offset+i];
+    }
+    if(read_offset+size>read_end)
+    {
+    	free(read_buffer);
+    	read_init=0;
+        return read_end-read_offset;
+    }
+    else
+    {
+    	read_offset+=size;
+        return size;
+    }
+}
 
 /* FixVMode Void      #####################################
  * ----------------   | Return Values                     |
@@ -87,7 +158,8 @@ void FixVMode(char * infile, char * outfile)
    //Buffer for Struct
    unsigned char buffer[4];
 
-   while((readbyte=fread(buffer,1,sizeof(buffer),f1))==sizeof(buffer))
+   //while((readbyte=fread(buffer,1,sizeof(buffer),f1))==sizeof(buffer))
+   while((readbyte=buffread(buffer,sizeof(buffer),f1))==sizeof(buffer))
    {
       //Type
       typo=0;
@@ -109,7 +181,8 @@ void FixVMode(char * infile, char * outfile)
          {
             typo=1;
             if(yfix||sfix) countdown=10;
-            fprintf(stdout,"<%s> -> Patched Type-A VMode !\n",infile);
+            if(vfix)
+               fprintf(stdout,"<%s> -> Patched Type-A VMode !\n",infile);
          }
 
          //Type B-Mask (Missing)
@@ -122,7 +195,8 @@ void FixVMode(char * infile, char * outfile)
          {
             typo=3;
             if(yfix||sfix) countdown=10;
-            fprintf(stdout,"<%s> -> Patched Type-C VMode !\n",infile);
+            if(vfix)
+               fprintf(stdout,"<%s> -> Patched Type-C VMode !\n",infile);
          }
    
          //Type D-Mask (Missing)
@@ -146,7 +220,7 @@ void FixVMode(char * infile, char * outfile)
          }
          if(sfix)
          {
-            if(buffer[2]>0x90)
+            if(buffer[2]>sbase)
             {
                buffer[2]--;
                fprintf(stdout,"<%s> -> Applied Screen-Fix !\n",infile);
@@ -161,14 +235,17 @@ void FixVMode(char * infile, char * outfile)
          if(!typo)
          {
             fwrite(buffer,1,1,f2);
-            fseek(f1,(1-sizeof(buffer)),SEEK_CUR);
+            read_offset-=sizeof(buffer)-1;
          }
 
          //Exchange for Type-A / Type-C Fix
          if((typo==1)||(typo==3))
          {
-            buffer[0]-=2;
-            buffer[3]-=2;
+            if(vfix)
+            {
+               buffer[0]-=2;
+               buffer[3]-=2;
+            }
             fwrite(buffer,1,4,f2);
          }
 
@@ -395,7 +472,7 @@ int GetYVal(char * str, int offset)
  * Main Procedure     |    !=0 = Failure  /  0 = Success  |
  * of Paladin.        #####################################
  */
-int main(int argc, char* argv[])
+int main(int argc, char * argv[])
 {
    //Print ASCII Graphixxx
    fprintf(stdout,"\n");
@@ -410,15 +487,17 @@ int main(int argc, char* argv[])
    fprintf(stdout,"\n");
 
    //Check Argument Count
-   if((argc<3)||(argc>7))
+   if((argc<3)||(argc>8))
    {
-      fprintf(stdout,"%s <PAL> <NTSC> [Y-Fix] [Screen-Fix] [Y-Value 1] [Y-Value 2]\n",argv[0]);
-      fprintf(stdout,"  ex. %s MyPAL.iso OutputNTSC.iso Yes Yes 0x03 0x00\n",argv[0]);
+      fprintf(stdout,"%s <PAL> <NTSC> [VMode-Fix] [Y-Fix] [Screen-Fix] [Y-Value 1] [Y-Value 2]\n",argv[0]);
+      fprintf(stdout,"  ex. %s MyPAL.iso OutputNTSC.iso Yes Yes Force 0x03 0x00\n",argv[0]);
       fprintf(stdout,"\n");
       fprintf(stdout,"  <PAL>        : Input PAL ISO File\n");
       fprintf(stdout,"  <NTSC>       : Output NTSC ISO File\n");
-      fprintf(stdout,"  [Y-Fix]      : Yes / No -> Automatically Resets Pos to 3/0\n");
-      fprintf(stdout,"  [Screen-Fix] : Yes / No -> Decreases Screen Value by 1\n");
+      fprintf(stdout,"  [VMode-Fix]  : Yes / No -> Standard Setting [Yes]\n");
+      fprintf(stdout,"  [Y-Fix]      : Yes / No -> Automatically Resets Pos to Custom Value\n");
+      fprintf(stdout,"  [Screen-Fix] : Yes / No / Force -> Decreases Screen Value by 1\n");
+      fprintf(stdout,"                 Force -> Forces a Screen-Fix, even on Values <= 0x90\n");
       fprintf(stdout,"  [Y-Value 1]  : Its the YFix 1 Value - If uninitialized Paladin will use 0x03\n");
       fprintf(stdout,"  [Y-Value 2]  : Its the YFix 2 Value - If unitinialized Paladin will use 0x00\n");
       fprintf(stdout,"\n");
@@ -450,20 +529,43 @@ int main(int argc, char* argv[])
    fprintf(stdout,"<%s> -> GameID [%s] verified as PAL ID!\n",argv[1],gameid);
 
    //Set Modes
-   if(!(strcmp(argv[3],"Yes"))) yfix=1;
-   if(!(strcmp(argv[4],"Yes"))) sfix=1;
+   int j;
 
-   //Set YVals
+   if(argc>=4)
+   {
+      for(j=0;j<strlen(argv[3]);j++)
+         argv[3][j]=toupper(argv[3][j]);
+      if(!(strcmp(argv[3],"NO"))) vfix=0;
+   }
+   if(argc>=5)
+   {
+      for(j=0;j<strlen(argv[4]);j++)
+         argv[4][j]=toupper(argv[4][j]);
+      if(!(strcmp(argv[4],"YES"))) yfix=1;
+   }
    if(argc>=6)
    {
-      if((GetYVal(argv[5],0))==-1)
+      for(j=0;j<strlen(argv[5]);j++)
+         argv[5][j]=toupper(argv[5][j]);
+      if(!(strcmp(argv[5],"YES"))) sfix=1;
+      if(!(strcmp(argv[5],"FORCE")))
+      {
+         sbase=0x00;
+         sfix=1;
+      }
+   }
+
+   //Set YVals
+   if(argc>=7)
+   {
+      if((GetYVal(argv[6],0))==-1)
       {
          fprintf(stdout,"<%s> -> Hex Value given for Y-Value 1 is invalid! Standard Value will be used!\n",argv[1]);
       }
    }
-   if(argc==7)
+   if(argc==8)
    {
-      if((GetYVal(argv[6],1))==-1)
+      if((GetYVal(argv[7],1))==-1)
       {
          fprintf(stdout,"<%s> -> Hex Value given for Y-Value 2 is invalid! Standard Value will be used!\n",argv[1]);
       }

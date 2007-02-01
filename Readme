@@ -2,7 +2,7 @@
       8888888b.     d8888 888                    888 d8b          R
       888   Y88b   d88888 888                    888 Y8P          .E
       888    888  d88P888 888                    888               .V
-      888   d88P d88P 888 888       8888b.   .d88888 888 88888b.    .I      [1.11]
+      888   d88P d88P 888 888       8888b.   .d88888 888 88888b.    .I      [1.2]
       8888888P" d88P  888 888          "88b d88" 888 888 888 "88b    .S
       888      d88P   888 888      .d888888 888  888 888 888  888     .I
       888     d8888888888 888      888  888 Y88b 888 888 888  888      .O
@@ -23,10 +23,9 @@
         Information :...........................................
          : As PAL Games were troubling me on POPS aswell,      :
          : I thought it was Time to put an End to it... :D     :
-         : This should center 99% of Games... If they aren't   :
-         : centered 100% after a normal Patch...               :
-         : You should try the two new Parameter!               :
-         : YFix and ScreenFix :D                               :
+         : This should center quite many Games...              :
+         : If they aren't centered 100% after a normal Patch-- :
+         : You should try some of the optional Parameter...    :
          :.....................................................:
 
         Credits :...............................................
@@ -37,6 +36,7 @@
          :                                                     :
          : flatwhatson                                         :
          :   *) For providing me several NTSC Struct-Dumps :D  :
+         :   *) For improving the Buffering of Files           :
          :                                                     :
          : Piccolo                                             :
          :   *) For pointing out how he fixed LoD.             :

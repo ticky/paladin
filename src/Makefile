@@ -2,7 +2,7 @@ OUTPUT=paladin
 OBJS=main.o
 CFLAGS=-Wall
 LDFLAGS=
-LIBS =
+LIBS=
 
 all: $(OUTPUT)
 
