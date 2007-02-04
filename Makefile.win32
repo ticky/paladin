@@ -1,3 +1,4 @@
+CC=i586-mingw32msvc-gcc
 OUTPUT=paladin
 OBJS=main.o
 CFLAGS=-Wall

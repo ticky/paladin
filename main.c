@@ -19,7 +19,7 @@
  *    8888888b.     d8888 888                    888 d8b          R
  *    888   Y88b   d88888 888                    888 Y8P          .E
  *    888    888  d88P888 888                    888               .V
- *    888   d88P d88P 888 888       8888b.   .d88888 888 88888b.    .I      [1.2]
+ *    888   d88P d88P 888 888       8888b.   .d88888 888 88888b.    .I      [1.3]
  *    8888888P" d88P  888 888          "88b d88" 888 888 888 "88b    .S
  *    888      d88P   888 888      .d888888 888  888 888 888  888     .I
  *    888     d8888888888 888      888  888 Y88b 888 888 888  888      .O
@@ -28,11 +28,11 @@
  *    Enhanced PAL to NTSC Converter for True PSX NTSC Conversion
  *
  *    Changelog :...................................................................
- *     : REVISION 1.0                                         by <Damian Coldbird> :
+ *     : REVISION 1.0                                                              :
  *     :     > Initial Release of PALadin - Welcome on Earth! by <Damian Coldbird> :
  *     :     > VMode Type-A Patching Support added            by <Damian Coldbird> :
  *     :.::..::..::..::..::..::..::..::..::..::..::..::..::..::.::..::..::..::..::.:
- *     : REVISION 1.1                                         by <Damian Coldbird> :
+ *     : REVISION 1.1                                                              :
  *     :     > VMode Type-C Patching Support added            by <Damian Coldbird> :
  *     :     > Y-Pos Type-A Patching Support added            by <Damian Coldbird> :
  *     :     > Y-Pos Type-C Patching Support added            by <Damian Coldbird> :
@@ -48,6 +48,14 @@
  *     :     > Improved Handling of Arguments                 by <Damian Coldbird> :
  *     :     > VMode outsourced to optional Argument          by <Damian Coldbird> :
  *     :.::..::..::..::..::..::..::..::..::..::..::..::..::..::.::..::..::..::..::.:
+ *     : REVISION 1.3                                                              :
+ *     :     > Rolling Buffer extended                        by <flatwhatson>     :
+ *     :     > Enhanced Speed & Less Corruption due to        by <Damian Coldbird> :
+ *     :       PS-X EXE LBA Limitation.                                            :
+ *     :     > Expansion of YPos Limit to 'Real' Values       by <Damian Coldbird> :
+ *     :       (Negative YPos Values now supported!)                               :
+ *     :     > Allow for NTSC / SECAM Games to be patched     by <Damian Coldbird> :
+ *     :.::..::..::..::..::..::..::..::..::..::..::..::..::..::.::..::..::..::..::.:
  */
 
 #include <stdio.h>
@@ -56,10 +64,13 @@
 #include <ctype.h>
 
 //Static Gamecode Ammount -> Used for PAL Region Verification
-#define N_GAME_CODES	4
+#define N_PAL_CODES	4
+#define N_GAME_CODES	12
+
+char gameid[10]={0};
 
 //Region-Codes -> Used for PAL Region Verification
-char *gamecodes[N_GAME_CODES] =
+char *palcodes[N_PAL_CODES] =
 {
 	"SLES",
 	"SCES",
@@ -67,51 +78,113 @@ char *gamecodes[N_GAME_CODES] =
 	"SLED",
 };
 
+char *gamecodes[N_GAME_CODES] =
+{
+	"SCUS",
+	"SLUS",
+	"SLES",
+	"SCES",
+	"SCED",
+	"SLPS",
+	"SLPM",
+	"SCPS",
+	"SLED",
+	"SLPS",
+	"SIPS",
+	"ESPM"
+};
+
+//Executeable Information
+typedef struct execinfo_s
+{
+   char execname[64];
+   int execlba;
+   int execoffset;
+   int execsize;
+} execinfo_t;
+
+int execcount=0;
+execinfo_t isoinfo[10];
+
 //Modes
 int vfix=1;
 int yfix=0;
 int sfix=0;
 unsigned char sbase=0x90;
-unsigned short yval[2]={0x03,0x00};
+short yval[2]={0x03,0x00};
 
 //Rolling Buffer Stuff <flatwhatsons' area...>
-#define BUFFSIZE 1024000
+#define BUFFSIZE 0x100000
 unsigned char * read_buffer;
-int read_end = 0;
-int read_offset = 0;
+int read_end;
+int read_offset;
 int read_init = 0;
+unsigned char * write_buffer;
+int write_offset;
+int write_init = 0;
 
 /* buffread Function  #####################################
  * -----------------  | Return Values                     |
- * Reads into the     |    Ammount of Read Bytes          |
+ * Reads file via a   |    Amount of Read Bytes           |
  * Rolling Buffer.    #####################################
  */
 int buffread(unsigned char * buffer, int size, FILE * fp)
 {
 	int i;
+	/* Initialise read buffer
+	 * - allocate memory
+	 * - fill with data from file
+	 */
     if(!read_init)
     {
     	read_buffer=malloc(BUFFSIZE);
-        read_end=fread(read_buffer,1,sizeof(read_buffer),fp);
+        read_end=fread(read_buffer,1,BUFFSIZE,fp);
         read_offset=0;
         read_init=1;
     }
-    if(read_offset+size>=sizeof(read_buffer))
+
+   /* Manual flush read buffer
+    * (call with size==0)
+    * - clean up write buffer
+    */
+   if(!size)
+   {
+      free(read_buffer);
+      read_init=0;
+      return 0;
+   }
+
+    /* Roll read buffer
+     * - not enough data to return 'size' unread bytes
+     * - copy remaining unread to start of buffer
+     * - fill remainder of buffer from file
+     */
+    if(read_offset+size>=BUFFSIZE)
     {
-        memcpy(read_buffer,read_buffer+read_offset,sizeof(read_buffer)-read_offset);
-        read_end=fread(read_buffer+sizeof(read_buffer)-read_offset,1,read_offset,fp)+sizeof(read_buffer)-read_offset;
+        memcpy(read_buffer,read_buffer+read_offset,BUFFSIZE-read_offset);
+        read_end=fread(read_buffer+BUFFSIZE-read_offset,1,read_offset,fp)+BUFFSIZE-read_offset;
         read_offset=0;
     }
+    /* Fill target buffer
+     * - write unread bytes into 'buffer'
+     */
     for(i=0;i<size;i++)
     {
     	buffer[i]=read_buffer[read_offset+i];
     }
+    /* End of file
+     * - clean up read buffer
+     * - return number of unread bytes
+     */
     if(read_offset+size>read_end)
     {
     	free(read_buffer);
     	read_init=0;
         return read_end-read_offset;
     }
+    /* Successful buffread
+     * - return number of unread bytes copied to 'buffer'
+     */
     else
     {
     	read_offset+=size;
@@ -119,8 +192,70 @@ int buffread(unsigned char * buffer, int size, FILE * fp)
     }
 }
 
+/* buffwrite Function #####################################
+ * ------------------ | Return Values                     |
+ * Writes file via a  |    Amount of Written Bytes        |
+ * Rolling Buffer.    #####################################
+ */
+int buffwrite(unsigned char * buffer, int size, FILE * fp)
+{
+	int i;
+	/* Initialise write buffer
+	 * - allocate memory
+	 */
+	if(!write_init)
+	{
+		write_buffer=malloc(BUFFSIZE);
+		write_init=1;
+	}
+	/* Manual flush write buffer
+	 * (call with size==0)
+	 * - write unwritten bytes from write buffer
+	 * - clean up write buffer
+	 */
+	if(!size)
+	{
+		fwrite(write_buffer,1,write_offset,fp);
+		free(write_buffer);
+		write_init=0;
+		return 0;
+	}
+	/* Auto flush write buffer
+	 * (no more room in buffer)
+	 * - write unwritten bytes from write buffer
+	 * - reset write buffer
+	 */
+	if(write_offset+size>=BUFFSIZE)
+	{
+		fwrite(write_buffer,1,write_offset,fp);
+		write_offset=0;
+	}
+	/* Fill write buffer
+	 * - copy into write buffer from source buffer
+	 */
+	for(i=0;i<size;i++)
+	{
+		write_buffer[write_offset+i]=buffer[i];
+	}
+	/* Successful write
+	 * - return number of bytes stored in write buffer
+	 */
+	write_offset+=size;
+	return size;
+}
+
+/* bufftell Function  #####################################
+ * ------------------ | Return Values                     |
+ * Rolling Buffer     |    Amount of Written Bytes        |
+ * ftell Equivalent.  #####################################
+ */
+int bufftell(FILE * fp)
+{
+   return ftell(fp)-BUFFSIZE+read_offset;
+}
+
 /* FixVMode Void      #####################################
- * ----------------   | Return Values                     |
+ * -----------------  | Return Values                     |
  * Fixes VMode and    |    None                           |
  * YFix / Screenfix.  #####################################
  */
@@ -149,179 +284,395 @@ void FixVMode(char * infile, char * outfile)
    //typo
    int typo=0;
 
-   //fixes
-   int countdown=0;
-
    //Contains the Ammount of Successfully Read Bytes via fread!
    int readbyte=0;
 
    //Buffer for Struct
-   unsigned char buffer[4];
+   unsigned char buffer[16];
+
+   //Are we inside a Executeable?
+   int in_exe=0;
+
+   //Needed Variable
+   int i;
+
+   //Executeable Information
+   fprintf(stdout,"\n");
+   for(i=0;i<execcount;i++)
+   {
+      fprintf(stdout,"---> Executeable #%i Information <---\n",i);
+      fprintf(stdout,"Name   -> [%s]\n",isoinfo[i].execname);
+      fprintf(stdout,"LBA    -> [%i]\n",isoinfo[i].execlba);
+      fprintf(stdout,"Offset -> [%i]\n",isoinfo[i].execoffset);
+      fprintf(stdout,"Size   -> [%i]\n",isoinfo[i].execsize);
+      fprintf(stdout,"\n");
+   }
 
    //while((readbyte=fread(buffer,1,sizeof(buffer),f1))==sizeof(buffer))
    while((readbyte=buffread(buffer,sizeof(buffer),f1))==sizeof(buffer))
    {
+      //Reset Executeable Check
+      in_exe=0;
+
       //Type
       typo=0;
 
-      //If Countdown is set
-      if(countdown)
+      //Check if we are currently inside a Executeable
+      for(i=0;i<execcount;i++)
       {
-         countdown--;
+         if(((bufftell(f1))>=isoinfo[i].execoffset)&&((bufftell(f1))<=(isoinfo[i].execoffset+isoinfo[i].execsize)))
+         {
+            in_exe=1;
+            break;
+         }
       }
 
-      //Do a Pre-Check on the Buffer
-      if((buffer[1]<<8)+buffer[0]>1)
+      //If we are in a Executeable... Well... Prepare for Patching!
+      if(in_exe)
       {
-         //Type A-Mask
-         if(buffer[0]==0x0A &&
-            buffer[1]==0x00 &&
-            buffer[2]==0x24 &&
-            buffer[3]==0x86)
+         //Do a Pre-Check on the Buffer
+         if((buffer[1]<<8)+buffer[0]>1)
          {
-            typo=1;
-            if(yfix||sfix) countdown=10;
-            if(vfix)
-               fprintf(stdout,"<%s> -> Patched Type-A VMode !\n",infile);
-         }
+            //Type A-Mask
+            if(buffer[0]==0x0A &&
+               buffer[1]==0x00 &&
+               buffer[2]==0x24 &&
+               buffer[3]==0x86)
+            {
+               typo=1;
+            }
 
-         //Type B-Mask (Missing)
+            //Type B-Mask
+            if(buffer[0]==0x08 &&
+               buffer[3]==0x91 &&
+               buffer[4]==0x24)
+            {
+               typo=2;
+            }
 
-         //Type C-Mask
-         if(buffer[0]==0x0A &&
-            buffer[1]==0x00 &&
-            buffer[2]==0x04 &&
-            buffer[3]==0x86)
-         {
-            typo=3;
-            if(yfix||sfix) countdown=10;
-            if(vfix)
-               fprintf(stdout,"<%s> -> Patched Type-C VMode !\n",infile);
+            //Type C-Mask
+            if(buffer[0]==0x0A &&
+               buffer[1]==0x00 &&
+               buffer[2]==0x04 &&
+               buffer[3]==0x86)
+            {
+               typo=3;
+            }
          }
-   
-         //Type D-Mask (Missing)
       }
 
-      //Apply Additional Fixes
-      if(((countdown==5)||(countdown==4))&&(buffer[2]>=0x90)&&(buffer[2]<=0x93)&&(buffer[3]==0x24))
+      //Type-A Struct
+      if(typo==1)
       {
+         //VMode Fix
+         if(vfix)
+         {
+            buffer[0]-=2;
+            buffer[3]-=2;
+            fprintf(stdout,"<%s> -> Patched VMode [A] in Executeable [%s] !\n",infile,isoinfo[i].execname);
+         }
+
+         //YPos Fix
          if(yfix)
          {
-               if(countdown==5)
+            if(buffer[10]>=sbase &&
+               buffer[10]<=0x94 &&
+               buffer[11]==0x24 &&
+               buffer[14]>=sbase &&
+               buffer[14]<=0x94 &&
+               buffer[15]==0x24)
+            {
+               if(yfix==2)
                {
-                  (*(short*)(&buffer))=yval[0];
-                  fprintf(stdout,"<%s> -> Applied Y-Fix 1 !\n",infile);
+               	(*(short*)(&buffer+8))+=yval[0];
+                  fprintf(stdout,"<%s> -> Applied Y-Fix 1 [A] in Executeable [%s] !\n",infile,isoinfo[i].execname);
+                  (*(short*)(&buffer+12))+=yval[1];
+                  fprintf(stdout,"<%s> -> Applied Y-Fix 2 [A] in Executeable [%s] !\n",infile,isoinfo[i].execname);
                }
-               if(countdown==4)
+               else
                {
-                  (*(short*)(&buffer))=yval[1];
-                  fprintf(stdout,"<%s> -> Applied Y-Fix 2 !\n",infile);
+                  (*(short*)(&buffer+8))=yval[0];
+                  fprintf(stdout,"<%s> -> Applied Y-Fix 1 [A] in Executeable [%s] !\n",infile,isoinfo[i].execname);
+                  (*(short*)(&buffer+12))=yval[1];
+                  fprintf(stdout,"<%s> -> Applied Y-Fix 2 [A] in Executeable [%s] !\n",infile,isoinfo[i].execname);
                }
+            }
          }
+
+         //Screenmode Fix
          if(sfix)
          {
-            if(buffer[2]>sbase)
+            if(buffer[10]>=sbase &&
+               buffer[10]<=0x94 &&
+               buffer[11]==0x24 &&
+               buffer[14]>=sbase &&
+               buffer[14]<=0x94 &&
+               buffer[15]==0x24)
             {
-               buffer[2]--;
-               fprintf(stdout,"<%s> -> Applied Screen-Fix !\n",infile);
+               buffer[10]--;
+               fprintf(stdout,"<%s> -> Applied Screen-Fix [A] in Executeable [%s] !\n",infile,isoinfo[i].execname);
             }
          }
-         fwrite(buffer,1,4,f2);
       }
-      //Apply Normal Fixes
+
+      //Type-B Struct
+      if(typo==2)
+      {
+         //YPos Fix
+         if(yfix)
+         {
+         	if(yfix==2)
+         	{
+         	   (*(short*)(&buffer+1))+=yval[0];
+               fprintf(stdout,"<%s> -> Applied Y-Fix 1 [B] in Executeable [%s] !\n",infile,isoinfo[i].execname);
+               (*(short*)(&buffer+5))+=yval[1];
+               fprintf(stdout,"<%s> -> Applied Y-Fix 2 [B] in Executeable [%s] !\n",infile,isoinfo[i].execname);
+         	}
+         	else
+         	{
+               (*(short*)(&buffer+1))=yval[0];
+               fprintf(stdout,"<%s> -> Applied Y-Fix 1 [B] in Executeable [%s] !\n",infile,isoinfo[i].execname);
+               (*(short*)(&buffer+5))=yval[1];
+               fprintf(stdout,"<%s> -> Applied Y-Fix 2 [B] in Executeable [%s] !\n",infile,isoinfo[i].execname);
+         	}
+         }
+      }
+
+      //Type-C Struct
+      if(typo==3)
+      {
+         //VMode Fix
+         if(vfix)
+         {
+            buffer[0]-=2;
+            buffer[3]-=2;
+            fprintf(stdout,"<%s> -> Patched VMode [C] in Executeable [%s] !\n",infile,isoinfo[i].execname);
+         }
+
+         //YPos Fix
+         if(yfix)
+         {
+            if(buffer[10]>=sbase &&
+               buffer[10]<=0x94 &&
+               buffer[11]==0x24 &&
+               buffer[14]>=sbase &&
+               buffer[14]<=0x94 &&
+               buffer[15]==0x24)
+            {
+               if(yfix==2)
+               {
+               	(*(short*)(&buffer+8))+=yval[0];
+                  fprintf(stdout,"<%s> -> Applied Y-Fix 1 [C] in Executeable [%s] !\n",infile,isoinfo[i].execname);
+                  (*(short*)(&buffer+12))+=yval[1];
+                  fprintf(stdout,"<%s> -> Applied Y-Fix 2 [C] in Executeable [%s] !\n",infile,isoinfo[i].execname);
+               }
+               else
+               {
+                  (*(short*)(&buffer+8))=yval[0];
+                  fprintf(stdout,"<%s> -> Applied Y-Fix 1 [C] in Executeable [%s] !\n",infile,isoinfo[i].execname);
+                  (*(short*)(&buffer+12))=yval[1];
+                  fprintf(stdout,"<%s> -> Applied Y-Fix 2 [C] in Executeable [%s] !\n",infile,isoinfo[i].execname);
+               }
+            }
+         }
+
+         //Screenmode Fix
+         if(sfix)
+         {
+            if(buffer[10]>=sbase &&
+               buffer[10]<=0x94 &&
+               buffer[11]==0x24 &&
+               buffer[14]>=sbase &&
+               buffer[14]<=0x94 &&
+               buffer[15]==0x24)
+            {
+               buffer[10]--;
+               fprintf(stdout,"<%s> -> Applied Screen-Fix [C] in Executeable [%s] !\n",infile,isoinfo[i].execname);
+            }
+         }
+      }
+
+
+      //Write Changes
+      if(typo)
+      {
+         //Write Edited Struct
+         buffwrite(buffer,sizeof(buffer),f2);
+      }
       else
       {
-         //Normal Copy... :)
-         if(!typo)
-         {
-            fwrite(buffer,1,1,f2);
-            read_offset-=sizeof(buffer)-1;
-         }
-
-         //Exchange for Type-A / Type-C Fix
-         if((typo==1)||(typo==3))
-         {
-            if(vfix)
-            {
-               buffer[0]-=2;
-               buffer[3]-=2;
-            }
-            fwrite(buffer,1,4,f2);
-         }
-
-         //Exchange for Type-B Fix (Missing)
-         if(typo==2)
-         {
-
-         }
-
-         //Exchange for Type-D Fix (Missing)
-         if(typo==4)
-         {
-
-         }
+         //Write One Byte and Revert
+         buffwrite(buffer,1,f2);
+         read_offset-=sizeof(buffer)-1;
       }
    }
 
    //This Shouldnt happen... but better safe than sorry...
    if(readbyte)
    {
-      fwrite(buffer,1,readbyte,f2);
+      buffwrite(buffer,readbyte,f2);
    }
+   
+   //Flush read buffer
+   buffread(buffer,0,f1);
+
+   //Flush write buffer
+   buffwrite(buffer,0,f2);
 
    //Close the Files... Work is over...
    fclose(f1);
    fclose(f2);
 }
 
-/* GetGID Function    #####################################
+/* GetInfo Function   #####################################
  * ----------------   | Return Values                     |
- * Filters out GID    |    0 = Failure  / char* = Success |
+ * Filters out Info   |    0 = Failure  / 1,2 = Success   |
  * of the ISO.        #####################################
  */
-char * GetGID(char * filename, char * output)
+int GetInfo(char * filename)
 {
+   //Open and Check Filepointer
    FILE * file = fopen(filename, "rb");
    if(!file)
    {
-      fprintf(stderr,"Couldn't Open PSX Game [%s] for GameID Scan!\n",filename);
+      fprintf(stderr,"Couldn't Open PSX Game [%s] for GameInfo Scan!\n",filename);
       exit(-1);
    }
 
+   //Needed Variable
    int i;
    int x;
+   int skip=0;
 
-   char buffer[13];
+   //Needed Buffer
+   char buffer[64];
 
-	while ((x = fread(buffer, 1, 13, file)) == 13)
+   //While the File ain't EOF
+	while ((x = buffread((unsigned char*)buffer, 64, file)) == 64)
 	{
-   	for (i = 0; i < N_GAME_CODES; i++)
-   	{
-   		if ((strncmp(buffer, gamecodes[i], 4) == 0)&&
-             (buffer[4]=='_')&&(buffer[8]=='.')&&(buffer[11]==';')&&(buffer[12]=='1'))
-   			break;
-   	}
-      if(i!=N_GAME_CODES)
+      if(gameid[0]==0)
       {
-         output[0]=gamecodes[i][0];
-         output[1]=gamecodes[i][1];
-         output[2]=gamecodes[i][2];
-         output[3]=gamecodes[i][3];
-         output[4]=buffer[5];
-         output[5]=buffer[6];
-         output[6]=buffer[7];
-         output[7]=buffer[9];
-         output[8]=buffer[10];
-         output[9]='\0';
+         //Check if the ISO actually is a PSX Game
+         for (i = 0; i < N_GAME_CODES; i++)
+   	   {
+   	      if ((strncmp(buffer+31, gamecodes[i], 4) == 0)&&
+   	          (buffer[35]=='_')&&(buffer[39]=='.')&&(buffer[42]==';')&&(buffer[43]=='1')&&
+                (buffer[0]==buffer[7])&&(buffer[1]==buffer[6])&&(buffer[2]==buffer[5])&&(buffer[3]==buffer[4])&&
+                (buffer[8]==buffer[15])&&(buffer[9]==buffer[14])&&(buffer[10]==buffer[13])&&(buffer[11]==buffer[12]))
+   	         break;
+   	   }
+
+         //If the ISO is a PSX Game -> Extract a ISO LBA Header
+   	   if(i!=N_GAME_CODES)
+   	   {
+            //GameID Filtering
+   	      gameid[0]=gamecodes[i][0];
+   	      gameid[1]=gamecodes[i][1];
+   	      gameid[2]=gamecodes[i][2];
+   	      gameid[3]=gamecodes[i][3];
+   	      gameid[4]=buffer[36];
+   	      gameid[5]=buffer[37];
+   	      gameid[6]=buffer[38];
+   	      gameid[7]=buffer[40];
+   	      gameid[8]=buffer[41];
+   	      gameid[9]='\0';
+
+            //Executeable Name Filtering
+            strcpy(isoinfo[execcount].execname, buffer+31);
+
+            //Executeable LBA Filtering
+            isoinfo[execcount].execlba=*(unsigned int*)(buffer);
+
+            //Executeable Offset Filtering
+            isoinfo[execcount].execoffset=24+((*(unsigned int*)(buffer))*0x930);
+
+            //Executeable Size Filtering
+            isoinfo[execcount].execsize=*(unsigned int*)(buffer+8);
+
+            //Increase Executeable Counter
+            execcount++;
+
+            //Skip Normal Check
+            skip=1;
+   	   }
+      }
+
+      if ((buffer[31]!=0)&&(!skip)&&
+            (buffer[0]==buffer[7])&&(buffer[1]==buffer[6])&&(buffer[2]==buffer[5])&&(buffer[3]==buffer[4])&&
+            (buffer[8]==buffer[15])&&(buffer[9]==buffer[14])&&(buffer[10]==buffer[13])&&(buffer[11]==buffer[12]))
+      {
+         //Backup old Position
+         long pos=ftell(file);
+
+         //Move to new Position
+         fseek(file,24L+((*(unsigned int*)(buffer))*0x930),SEEK_SET);
+
+         //Temporary Buffer
+         char buf[9];
+
+         //Read Information
+         fread(buf,1,8,file);
+         buf[8]='\0';
+
+         //Check if its a PS-X EXE
+         if(!strcmp(buf,"PS-X EXE"))
+         {
+            //Executeable Name Filtering
+            strcpy(isoinfo[execcount].execname, buffer+31);
+
+            //Executeable LBA Filtering
+            isoinfo[execcount].execlba=*(unsigned int*)(buffer);
+
+            //Executeable Offset Filtering
+            isoinfo[execcount].execoffset=24+((*(unsigned int*)(buffer))*0x930);
+
+            //Executeable Size Filtering
+            isoinfo[execcount].execsize=*(unsigned int*)(buffer+8);
+
+            //Increase Executeable Counter
+            execcount++;
+         }
+
+         //Revert to old Position
+         fseek(file,pos,SEEK_SET);
+      }
+
+      //Kill Skip
+      skip=0;
+
+      //Rollback the File
+      read_offset-=63;
+
+      //Are we already above 1MB?
+      if((bufftell(file))>=(1024*1024))
+      {
          break;
       }
-      fseek(file,-12L,SEEK_CUR);
    }
 
+   //Flush Buffer
+   buffread((unsigned char*)buffer,0,file);
+
+   //Close File - Our Work here is done...
    fclose(file);
 
-   if(x!=13) return (char*)(0);
-   else return output;
+   //If the Game is a PAL Game
+   for (i = 0; i < N_PAL_CODES; i++)
+   {
+      if ((strncmp(gameid, palcodes[i], 4) == 0))
+         break;
+   }
+
+   //Game is a PAL Games
+   if(i!=N_PAL_CODES)
+   {
+      return 2;
+   }
+
+   //ISO ain't a PSX Game
+   if(x!=64) return 0;
+   //ISO is a NON-PAL Game
+   else return 1;
 }
 
 /* Roland Function      #####################################
@@ -444,23 +795,40 @@ int LetterVal(char c)
  */
 int GetYVal(char * str, int offset)
 {
-   unsigned short result=0;
+   short result=0;
+   int mode=0;
+   int noobval;
 
-   if((strlen(str))!=4)
+   if((strlen(str))!=4&&(strlen(str))!=5)
       return 0;
 
-   if((str[0]!='0')||(str[1]!='x'))
-      return 0;
+   if(str[0]=='-')
+      mode=1;
 
-   if(((str[2]>='0')&&(str[2]<='9'))||((str[2]>='A')&&(str[2]<='F'))||((str[2]>='a')&&(str[2]<='z')))
-      result+=(0x10*(LetterVal(str[2])));
+   if(!(noobval=atoi(str)))
+   {
+      if((str[0+mode]!='0')||(str[1+mode]!='x'))
+         return 0;
+
+      if(((str[2+mode]>='0')&&(str[2+mode]<='9'))||((str[2+mode]>='A')&&(str[2+mode]<='F'))||((str[2+mode]>='a')&&(str[2+mode]<='z')))
+         result+=(0x10*(LetterVal(str[2+mode])));
+      else
+         return 0;
+
+      if(((str[3+mode]>='0')&&(str[3+mode]<='9'))||((str[3+mode]>='A')&&(str[3+mode]<='F'))||((str[3+mode]>='a')&&(str[3+mode]<='z')))
+         result+=LetterVal(str[3+mode]);
+      else
+         return 0;
+      
+      if(mode)
+         result*=-1;
+   }
    else
-      return 0;
-
-   if(((str[3]>='0')&&(str[3]<='9'))||((str[3]>='A')&&(str[3]<='F'))||((str[3]>='a')&&(str[3]<='z')))
-      result+=LetterVal(str[3]);
-   else
-      return 0;
+   {
+      result=noobval;
+      if(yfix)
+         yfix=2;
+   }
 
    yval[offset]=result;
 
@@ -518,15 +886,29 @@ int main(int argc, char * argv[])
       return -2;
    }
 
-   //Check if Game is European
-   char gameid[10];
-   if(!(GetGID(argv[1],gameid)))
+   //Get Game Information
+   int region;
+   if((region=GetInfo(argv[1]))==1)
    {
-      fprintf(stderr,"<%s> -> File ain't a European PSX-Game!\n",argv[1]);
+      fprintf(stdout,"<%s> -> GameID [%s] ain't a PAL ID!\n",argv[1],gameid);
+      fprintf(stdout,"<%s> -> Patching most probably will corrupt your ISO... Beware...\n",argv[1]);
+   }
+   else if(region==2)
+   {
+      fprintf(stdout,"<%s> -> GameID [%s] verified as PAL ID!\n",argv[1],gameid);
+   }
+   else
+   {
+      fprintf(stderr,"<%s> -> ISO ain't a PSX Game!\n",argv[1]);
       return -3;
    }
 
-   fprintf(stdout,"<%s> -> GameID [%s] verified as PAL ID!\n",argv[1],gameid);
+   //Check if there are any Patchable Executeables inside...
+   if(!execcount)
+   {
+      fprintf(stderr,"<%s> -> Couldn't find a PSX Executeable inside the ISO!\n",argv[1]);
+      return -4;
+   }
 
    //Set Modes
    int j;
@@ -558,14 +940,22 @@ int main(int argc, char * argv[])
    //Set YVals
    if(argc>=7)
    {
-      if((GetYVal(argv[6],0))==-1)
+      if(!(GetYVal(argv[6],0)))
       {
          fprintf(stdout,"<%s> -> Hex Value given for Y-Value 1 is invalid! Standard Value will be used!\n",argv[1]);
+      }
+      else if(yfix==2)
+      {
+         yval[1]=yval[0];
+      }
+      else
+      {
+         yval[1]=yval[0]-3;
       }
    }
    if(argc==8)
    {
-      if((GetYVal(argv[7],1))==-1)
+      if(!(GetYVal(argv[7],1)))
       {
          fprintf(stdout,"<%s> -> Hex Value given for Y-Value 2 is invalid! Standard Value will be used!\n",argv[1]);
       }
